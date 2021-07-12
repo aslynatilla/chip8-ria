@@ -29,3 +29,12 @@ fn chip8_stack_overflows(){
     let mut cpu = CPU::new([0; 16], init_memory);
     cpu.run();
 }
+
+#[test]
+#[should_panic(expected="Stack underflow")]
+fn chip8_stack_underflows(){
+    let mut init_memory = [0u8; 0x1000];
+    init_memory[0x0000..0x0002].copy_from_slice(&[0x00, 0xEE]);
+    let mut cpu = CPU::new([0; 16], init_memory);
+    cpu.run();
+}
