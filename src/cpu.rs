@@ -7,6 +7,16 @@ pub struct CPU {
 }
 
 impl CPU {
+    pub fn default() -> CPU {
+        CPU{
+            registers: [0u8; 16],
+            program_counter: 0,
+            memory: [0u8; 0x1000],
+            stack: [0u16; 16],
+            stack_pointer: 0
+        }
+    }
+
     pub fn new(registers : [u8; 16], memory : [u8; 0x1000]) -> CPU {
         CPU {
             registers,
@@ -15,6 +25,13 @@ impl CPU {
             stack: [0; 16],
             stack_pointer: 0,
         }
+    }
+
+    //TODO: find a better name for this function
+    pub fn new_with_memory(memory_initializer : Vec<u8>) -> CPU {
+        let mut cpu = CPU::default();
+        cpu.memory[0x0..memory_initializer.len()].copy_from_slice(memory_initializer.as_slice());
+        cpu
     }
 
     pub fn run(&mut self) {
