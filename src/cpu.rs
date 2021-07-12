@@ -65,7 +65,7 @@ impl CPU {
     fn call(&mut self, fn_address: u16) {
         let (stack_ptr, stack) = (self.stack_pointer, &mut self.stack);
 
-        if stack_ptr > stack.len() {
+        if stack_ptr >= stack.len() {
             panic!("Stack overflow!");
         }
 
