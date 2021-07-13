@@ -11,5 +11,4 @@ fn main() {
 
     let mut cpu = CPU::new(init_registers, init_memory);
     cpu.run();
-    assert_eq!(cpu.registers[0], 45);
 }

@@ -1,11 +1,12 @@
 #![allow(dead_code)]
+
 pub struct CPU {
-    pub registers: [u8; 16],
-    pub program_counter: usize,
-    pub memory: [u8; 0x1000],
-    pub stack: [u16; 16],
-    pub stack_pointer: usize,
-    pub pointer_register : u16,
+    registers: [u8; 16],
+    program_counter: usize,
+    memory: [u8; 0x1000],
+    stack: [u16; 16],
+    stack_pointer: usize,
+    pointer_register: u16,
 }
 
 impl CPU {
@@ -16,7 +17,7 @@ impl CPU {
             memory: [0u8; 0x1000],
             stack: [0u16; 16],
             stack_pointer: 0,
-            pointer_register : 0
+            pointer_register: 0,
         }
     }
 
@@ -27,7 +28,7 @@ impl CPU {
             program_counter: 0,
             stack: [0; 16],
             stack_pointer: 0,
-            pointer_register: 0
+            pointer_register: 0,
         }
     }
 
@@ -55,11 +56,16 @@ impl CPU {
                 (0xA, _, _, _) => self.set_pointer_register(nnn),
                 (0xB, _, _, _) => self.offset_jump_to(nnn),
                 (0x8, _, _, 0x4) => self.add_registers(x, y),
+                (0x6, _, _, _) => self.load_in_register(x, kk),
                 (0x7, _, _, _) => self.add_constant(x, kk),
 
                 _ => todo!("opcode {:04x}", op_code),
             }
         }
+    }
+
+    pub(in super) fn peek_register(&self, register_index: usize) -> u8 {
+        self.registers[register_index]
     }
 
     fn read_opcode(&self) -> u16 {
@@ -106,24 +112,36 @@ impl CPU {
         self.stack_pointer -= 1;
         self.program_counter = self.stack[self.stack_pointer] as usize;
     }
+
     fn jump_to(&mut self, address: u16) {
         if !self.is_legal_address(address as usize) {
             panic!("Jumping to illegal address!")
         }
         self.program_counter = address as usize;
     }
+
     fn is_legal_address(&self, address: usize) -> bool {
         address < self.memory.len() - 1
     }
+
     fn set_pointer_register(&mut self, address: u16) {
         self.pointer_register = address;
     }
-    fn offset_jump_to(&mut self, address: u16){
+
+    fn offset_jump_to(&mut self, address: u16) {
         let destination = address + self.registers[0] as u16;
         if !self.is_legal_address(destination as usize) {
             panic!("Jumping to illegal address!")
         }
         self.jump_to(destination);
+    }
+
+    fn load_in_register(&mut self, register_index: u8, register_value: u8) {
+        let index = register_index as usize;
+        if index >= self.registers.len() {
+            panic!("Register index out of bounds!")
+        }
+        self.registers[index] = register_value;
     }
 }
 

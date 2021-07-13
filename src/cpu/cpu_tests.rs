@@ -1,9 +1,5 @@
 #[cfg(test)]
 use crate::cpu::cpu::CPU;
-#[test]
-fn dummy_test() {
-    assert!(true)
-}
 
 #[test]
 fn rust_in_action_last_example() {
@@ -16,7 +12,7 @@ fn rust_in_action_last_example() {
 
     let mut cpu = CPU::new(init_registers, init_memory);
     cpu.run();
-    assert_eq!(cpu.registers[0], 45);
+    assert_eq!(cpu.peek_register(0), 45);
 }
 
 #[test]
@@ -44,7 +40,7 @@ fn offset_jump(){
         0x70, 0x02      //  add 0x02 to register 0
     ]);
     cpu.run();
-    assert_eq!(cpu.registers[0], 9);
+    assert_eq!(cpu.peek_register(0), 9);
 }
 
 #[test]
@@ -53,4 +49,11 @@ fn illegal_jump(){
     //  Jumping to the last byte of memory shouldn't be allowed.
     let mut cpu = CPU::new_with_memory(vec![0x1F, 0xFF]);
     cpu.run();
+}
+
+#[test]
+fn load_number_to_register(){
+    let mut cpu = CPU::new_with_memory(vec![0x60, 0xFF]);
+    cpu.run();
+    assert_eq!(cpu.peek_register(0), 0xFF);
 }
