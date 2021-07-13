@@ -128,3 +128,21 @@ fn registers_subtraction(){
     assert_eq!(cpu.peek_register(0x0), 2);
     assert_eq!(cpu.peek_register(0xF), 1);
 }
+
+#[test]
+fn shifting_registers(){
+    let mut cpu = CPU::new_with_memory(vec![
+        0x60, 0x00,     //  set register 0 to 10
+        0x61, 0x01,     //  set register 1 to 8
+        0x80, 0x13,     //  register 0 | register 1
+        0x81, 0x0E,     //  shift left register 1
+        0x80, 0x06,     //  shift right register 0 (overflow)
+        0x62, 0xFF,     //  set register 2 to 255
+        0x82, 0x0E,     //  shift left register 2  (overflow)
+    ]);
+    cpu.run();
+    assert_eq!(cpu.peek_register(0x0), 0);
+    assert_eq!(cpu.peek_register(0x1), 2);
+    assert_eq!(cpu.peek_register(0x2), 254);
+    assert_eq!(cpu.peek_register(0xF), 1);
+}

@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use std::ops::{ShlAssign, ShrAssign};
+
 pub struct CPU {
     registers: [u8; 16],
     program_counter: usize,
@@ -63,6 +65,9 @@ impl CPU {
                 (0x8, _, _, 0x3) => self.xor(x, y),
                 (0x8, _, _, 0x4) => self.add_registers(x, y),
                 (0x8, _, _, 0x5) => self.sub_registers(x, y),
+                (0x8, _, _, 0x6) => self.shift_right(x),
+                //(0x8, _, _, 0x7) => self.NOT_sub_registers(x, y),
+                (0x8, _, _, 0xE) => self.shift_left(x),
                 (0x3, _, _, _) => self.skip_if_equal(x, kk),
                 (0x4, _, _, _) => self.skip_if_different(x, kk),
                 (0x6, _, _, _) => self.load_in_register(x, kk),
@@ -195,6 +200,7 @@ impl CPU {
         let (first, second) = (first_index as usize, second_index as usize);
         self.registers[first] ^= self.registers[second];
     }
+
     fn sub_registers(&mut self, first_index: u8, second_index: u8) {
         let (first, second) = (first_index as usize, second_index as usize);
         let (result, overflowing) = self.registers[first].overflowing_sub(self.registers[second]);
@@ -203,6 +209,20 @@ impl CPU {
             true => self.registers[0xF] = 1,
             false => self.registers[0xF] = 0,
         }
+    }
+
+    fn shift_right(&mut self, first_index: u8) {
+        let first = first_index as usize;
+        let first_register = self.registers[first];
+        self.registers[0xF] = first_register & 0b0000_0001;
+        self.registers[first].shr_assign(1);
+    }
+
+    fn shift_left(&mut self, first_index: u8) {
+        let first = first_index as usize;
+        let first_register = self.registers[first];
+        self.registers[0xF] = (first_register & 0b1000_0000) >> 7;
+        self.registers[first].shl_assign(1);
     }
 }
 
