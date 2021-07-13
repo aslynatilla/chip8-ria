@@ -33,3 +33,16 @@ fn chip8_stack_underflows() {
     let mut cpu = CPU::new_with_memory(vec![0x00, 0xEE]);
     cpu.run();
 }
+
+#[test]
+fn offset_jump(){
+    let mut cpu = CPU::new_with_memory(vec![
+        0x70, 0x07,     //  add 0x07 to register 0
+        0xB0, 0x01,     //  jump to register 0 plus 0x01
+        0xC0, 0xC0,
+        0x0F, 0xD0,
+        0x70, 0x02      //  add 0x02 to register 0
+    ]);
+    cpu.run();
+    assert_eq!(cpu.registers[0], 9);
+}
