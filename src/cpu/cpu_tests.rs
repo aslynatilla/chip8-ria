@@ -114,3 +114,17 @@ fn logical_operators(){
     assert_eq!(cpu.peek_register(1), 4);
     assert_eq!(cpu.peek_register(2), 8);
 }
+
+#[test]
+fn registers_subtraction(){
+    let mut cpu = CPU::new_with_memory(vec![
+        0x60, 0x0A,     //  set register 0 to 10
+        0x61, 0x08,     //  set register 1 to 8
+        0x62, 0x01,     //  set register 2 to 1
+        0x80, 0x15,     //  subtract register 1 from register 0
+        0x82, 0x05,     //  subtract register 0 from register 2
+    ]);
+    cpu.run();
+    assert_eq!(cpu.peek_register(0x0), 2);
+    assert_eq!(cpu.peek_register(0xF), 1);
+}

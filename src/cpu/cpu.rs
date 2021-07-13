@@ -62,6 +62,7 @@ impl CPU {
                 (0x8, _, _, 0x2) => self.and(x, y),
                 (0x8, _, _, 0x3) => self.xor(x, y),
                 (0x8, _, _, 0x4) => self.add_registers(x, y),
+                (0x8, _, _, 0x5) => self.sub_registers(x, y),
                 (0x3, _, _, _) => self.skip_if_equal(x, kk),
                 (0x4, _, _, _) => self.skip_if_different(x, kk),
                 (0x6, _, _, _) => self.load_in_register(x, kk),
@@ -193,6 +194,15 @@ impl CPU {
     fn xor(&mut self, first_index: u8, second_index: u8) {
         let (first, second) = (first_index as usize, second_index as usize);
         self.registers[first] ^= self.registers[second];
+    }
+    fn sub_registers(&mut self, first_index: u8, second_index: u8) {
+        let (first, second) = (first_index as usize, second_index as usize);
+        let (result, overflowing) = self.registers[first].overflowing_sub(self.registers[second]);
+        self.registers[first] = result;
+        match overflowing {
+            true => self.registers[0xF] = 1,
+            false => self.registers[0xF] = 0,
+        }
     }
 }
 
