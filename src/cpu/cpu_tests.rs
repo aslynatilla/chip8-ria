@@ -57,3 +57,16 @@ fn load_number_to_register(){
     cpu.run();
     assert_eq!(cpu.peek_register(0), 0xFF);
 }
+
+#[test]
+fn skip_instructions(){
+    let mut cpu = CPU::new_with_memory(vec![
+        0x60, 0x07,     //  set register 0 to 0x07
+        0x30, 0x07,     //  skip if register 0 contains 0x07
+        0x70, 0x07,
+        0x40, 0x07,     //  skip if register 0 does not contain 0x07
+        0x70, 0x03      //  add 0x03 to register 0
+    ]);
+    cpu.run();
+    assert_eq!(cpu.peek_register(0), 10);
+}

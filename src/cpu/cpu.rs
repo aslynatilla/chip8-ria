@@ -56,6 +56,8 @@ impl CPU {
                 (0xA, _, _, _) => self.set_pointer_register(nnn),
                 (0xB, _, _, _) => self.offset_jump_to(nnn),
                 (0x8, _, _, 0x4) => self.add_registers(x, y),
+                (0x3, _, _, _) => self.skip_if_equal(x, kk),
+                (0x4, _, _, _) => self.skip_if_different(x, kk),
                 (0x6, _, _, _) => self.load_in_register(x, kk),
                 (0x7, _, _, _) => self.add_constant(x, kk),
 
@@ -142,6 +144,18 @@ impl CPU {
             panic!("Register index out of bounds!")
         }
         self.registers[index] = register_value;
+    }
+
+    fn skip_if_equal(&mut self, register_index: u8, comparison_value: u8) {
+        if self.registers[register_index as usize] == comparison_value {
+            self.program_counter += 2;
+        }
+    }
+
+    fn skip_if_different(&mut self, register_index: u8, comparison_value: u8) {
+        if self.registers[register_index as usize] != comparison_value {
+            self.program_counter += 2;
+        }
     }
 }
 
