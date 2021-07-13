@@ -113,7 +113,7 @@ impl CPU {
         self.program_counter = address as usize;
     }
     fn is_legal_address(&self, address: usize) -> bool {
-        address < self.memory.len()
+        address < self.memory.len() - 1
     }
     fn set_pointer_register(&mut self, address: u16) {
         self.pointer_register = address;

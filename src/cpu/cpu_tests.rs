@@ -46,3 +46,11 @@ fn offset_jump(){
     cpu.run();
     assert_eq!(cpu.registers[0], 9);
 }
+
+#[test]
+#[should_panic(expected = "illegal address")]
+fn illegal_jump(){
+    //  Jumping to the last byte of memory shouldn't be allowed.
+    let mut cpu = CPU::new_with_memory(vec![0x1F, 0xFF]);
+    cpu.run();
+}
