@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 pub struct CPU {
     pub registers: [u8; 16],
     pub program_counter: usize,
@@ -8,16 +9,16 @@ pub struct CPU {
 
 impl CPU {
     pub fn default() -> CPU {
-        CPU{
+        CPU {
             registers: [0u8; 16],
             program_counter: 0,
             memory: [0u8; 0x1000],
             stack: [0u16; 16],
-            stack_pointer: 0
+            stack_pointer: 0,
         }
     }
 
-    pub fn new(registers : [u8; 16], memory : [u8; 0x1000]) -> CPU {
+    pub fn new(registers: [u8; 16], memory: [u8; 0x1000]) -> CPU {
         CPU {
             registers,
             memory,
@@ -28,7 +29,7 @@ impl CPU {
     }
 
     //TODO: find a better name for this function
-    pub fn new_with_memory(memory_initializer : Vec<u8>) -> CPU {
+    pub fn new_with_memory(memory_initializer: Vec<u8>) -> CPU {
         let mut cpu = CPU::default();
         cpu.memory[0x0..memory_initializer.len()].copy_from_slice(memory_initializer.as_slice());
         cpu
@@ -47,6 +48,7 @@ impl CPU {
                 (0, 0, 0, 0) => break 'running,
                 (0, 0, 0xE, 0xE) => self.ret(),
                 (0x2, _, _, _) => self.call(nnn),
+                (0x1, _, _, _) => self.jump_to(nnn),
                 (0x8, _, _, 0x4) => self.add_registers(x, y),
                 (0x7, _, _, _) => self.add_constant(x, kk),
 
@@ -98,6 +100,15 @@ impl CPU {
 
         self.stack_pointer -= 1;
         self.program_counter = self.stack[self.stack_pointer] as usize;
+    }
+    fn jump_to(&mut self, address: u16) {
+        if !self.is_legal_address(address as usize) {
+            panic!("Jumping to illegal address!")
+        }
+        self.program_counter = address as usize;
+    }
+    fn is_legal_address(&self, address: usize) -> bool {
+        address < self.memory.len()
     }
 }
 
