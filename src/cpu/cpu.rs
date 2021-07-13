@@ -55,6 +55,8 @@ impl CPU {
                 (0x1, _, _, _) => self.jump_to(nnn),
                 (0xA, _, _, _) => self.set_pointer_register(nnn),
                 (0xB, _, _, _) => self.offset_jump_to(nnn),
+                (0x5, _, _, 0x0) => self.skip_if_equal_registers(x, y),
+                (0x9, _, _, 0x0) => self.skip_if_different_registers(x, y),
                 (0x8, _, _, 0x4) => self.add_registers(x, y),
                 (0x3, _, _, _) => self.skip_if_equal(x, kk),
                 (0x4, _, _, _) => self.skip_if_different(x, kk),
@@ -154,6 +156,18 @@ impl CPU {
 
     fn skip_if_different(&mut self, register_index: u8, comparison_value: u8) {
         if self.registers[register_index as usize] != comparison_value {
+            self.program_counter += 2;
+        }
+    }
+
+    fn skip_if_equal_registers(&mut self, first_index: u8, second_index: u8){
+        if self.registers[first_index as usize] == self.registers[second_index as usize] {
+            self.program_counter += 2;
+        }
+    }
+
+    fn skip_if_different_registers(&mut self, first_index: u8, second_index: u8){
+        if self.registers[first_index as usize] != self.registers[second_index as usize] {
             self.program_counter += 2;
         }
     }

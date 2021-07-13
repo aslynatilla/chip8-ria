@@ -59,7 +59,7 @@ fn load_number_to_register(){
 }
 
 #[test]
-fn skip_instructions(){
+fn skip_instructions_constant_comparison(){
     let mut cpu = CPU::new_with_memory(vec![
         0x60, 0x07,     //  set register 0 to 0x07
         0x30, 0x07,     //  skip if register 0 contains 0x07
@@ -69,4 +69,19 @@ fn skip_instructions(){
     ]);
     cpu.run();
     assert_eq!(cpu.peek_register(0), 10);
+}
+
+#[test]
+fn skip_instructions_register_comparison(){
+    let mut cpu = CPU::new_with_memory(vec![
+        0x60, 0x07,     //  set register 0 to 0x07
+        0x61, 0x07,     //  set register 0 to 0x07
+        0x50, 0x10,     //  skip if register 0 is equal to register 1
+        0x70, 0x07,
+        0x90, 0x10,     //  skip if register 0 is not equal to register 1
+        0x80, 0x14      //  add register 0 to register 1 and store result in register 0
+    ]);
+    cpu.run();
+    assert_eq!(cpu.peek_register(0), 14);
+    assert_eq!(cpu.peek_register(1), 7);
 }
