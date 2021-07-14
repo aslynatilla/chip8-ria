@@ -53,8 +53,8 @@ impl CPU {
             match (c, x, y, d) {
                 (0, 0, 0, 0) => break 'running,
                 (0, 0, 0xE, 0xE) => self.ret(),
-                (0x2, _, _, _) => self.call(nnn),
                 (0x1, _, _, _) => self.jump_to(nnn),
+                (0x2, _, _, _) => self.call(nnn),
                 (0xA, _, _, _) => self.set_pointer_register(nnn),
                 (0xB, _, _, _) => self.offset_jump_to(nnn),
                 (0x5, _, _, 0x0) => self.skip_if_equal_registers(x, y),
@@ -66,7 +66,7 @@ impl CPU {
                 (0x8, _, _, 0x4) => self.add_registers(x, y),
                 (0x8, _, _, 0x5) => self.sub_registers(x, y),
                 (0x8, _, _, 0x6) => self.shift_right(x),
-                //(0x8, _, _, 0x7) => self.NOT_sub_registers(x, y),
+                (0x8, _, _, 0x7) => self.sub_registers_swapped(x, y),
                 (0x8, _, _, 0xE) => self.shift_left(x),
                 (0x3, _, _, _) => self.skip_if_equal(x, kk),
                 (0x4, _, _, _) => self.skip_if_different(x, kk),
@@ -223,6 +223,16 @@ impl CPU {
         let first_register = self.registers[first];
         self.registers[0xF] = (first_register & 0b1000_0000) >> 7;
         self.registers[first].shl_assign(1);
+    }
+
+    fn sub_registers_swapped(&mut self, first_index: u8, second_index: u8) {
+        let (first, second) = (first_index as usize, second_index as usize);
+        let (result, overflowing) = self.registers[second].overflowing_sub(self.registers[first]);
+        self.registers[first] = result;
+        match overflowing {
+            true => self.registers[0xF] = 1,
+            false => self.registers[0xF] = 0,
+        }
     }
 }
 
