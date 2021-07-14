@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
-use std::ops::{ShlAssign, ShrAssign};
+use std::ops::{ShlAssign, ShrAssign, BitAnd};
+use rand::Rng;
 
 pub struct CPU {
     registers: [u8; 16],
@@ -68,6 +69,7 @@ impl CPU {
                 (0x8, _, _, 0x6) => self.shift_right(x),
                 (0x8, _, _, 0x7) => self.sub_registers_swapped(x, y),
                 (0x8, _, _, 0xE) => self.shift_left(x),
+                (0xC, _, _, _) => self.random_and_constant_in(x, kk),
                 (0x3, _, _, _) => self.skip_if_equal(x, kk),
                 (0x4, _, _, _) => self.skip_if_different(x, kk),
                 (0x6, _, _, _) => self.load_in_register(x, kk),
@@ -233,6 +235,12 @@ impl CPU {
             true => self.registers[0xF] = 1,
             false => self.registers[0xF] = 0,
         }
+    }
+
+    fn random_and_constant_in(&mut self, register_index: u8, constant: u8) {
+        let random_num : u8 = rand::thread_rng().gen();
+        self.registers[register_index as usize] = random_num.bitand(constant);
+    }
     }
 }
 
