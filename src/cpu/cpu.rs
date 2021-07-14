@@ -74,6 +74,8 @@ impl CPU {
                 (0x4, _, _, _) => self.skip_if_different(x, kk),
                 (0x6, _, _, _) => self.load_in_register(x, kk),
                 (0x7, _, _, _) => self.add_constant(x, kk),
+                (0xF, _, 0x5, 0x5) => self.store_registers_up_to(x),
+                (0xF, _, 0x6, 0x5) => self.load_registers_up_to(x),
 
                 _ => todo!("opcode {:04x}", op_code),
             }
@@ -241,6 +243,19 @@ impl CPU {
         let random_num : u8 = rand::thread_rng().gen();
         self.registers[register_index as usize] = random_num.bitand(constant);
     }
+
+    fn store_registers_up_to(&mut self, register_index: u8) {
+        let index = register_index as usize;
+        let start_address = self.pointer_register as usize;
+        let end_address = start_address + index;
+        self.memory[start_address..=end_address].copy_from_slice(&self.registers[0..=index]);
+    }
+
+    fn load_registers_up_to(&mut self, register_index: u8) {
+        let index = register_index as usize;
+        let start_address = self.pointer_register as usize;
+        let end_address = start_address + index;
+        self.registers[0..=index].copy_from_slice(&self.memory[start_address..=end_address]);
     }
 }
 

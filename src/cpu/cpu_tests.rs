@@ -158,3 +158,22 @@ fn registers_swap_subtraction(){
     assert_eq!(cpu.peek_register(0x1), 2);
     assert_eq!(cpu.peek_register(0xF), 0);
 }
+
+#[test]
+fn load_and_store_operations(){
+    let mut cpu = CPU::new_with_memory(vec![
+        0x60, 0x0A,     //  set register 0 to 10
+        0x61, 0x08,     //  set register 1 to 8
+        0x62, 0x01,     //  set register 2 to 1
+        0x63, 0x04,     //  set register 3 to 4
+        0xA1, 0x00,     //  set pointer register to 0x100
+        0xF3, 0x55,     //  store register from 0 to 3 in memory[pointer_register]
+        0xA1, 0x02,     //  set pointer register to 0x102
+        0xF1, 0x65,     //  load register from 0 to 1 reading from memory[pointer_register]
+    ]);
+    cpu.run();
+    assert_eq!(cpu.peek_register(0x0), 1);
+    assert_eq!(cpu.peek_register(0x1), 4);
+    assert_eq!(cpu.peek_register(0x2), 1);
+    assert_eq!(cpu.peek_register(0x3), 4);
+}
