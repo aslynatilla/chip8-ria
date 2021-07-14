@@ -56,10 +56,11 @@ impl CPU {
                 (0, 0, 0xE, 0xE) => self.ret(),
                 (0x1, _, _, _) => self.jump_to(nnn),
                 (0x2, _, _, _) => self.call(nnn),
-                (0xA, _, _, _) => self.set_pointer_register(nnn),
-                (0xB, _, _, _) => self.offset_jump_to(nnn),
+                (0x3, _, _, _) => self.skip_if_equal(x, kk),
+                (0x4, _, _, _) => self.skip_if_different(x, kk),
                 (0x5, _, _, 0x0) => self.skip_if_equal_registers(x, y),
-                (0x9, _, _, 0x0) => self.skip_if_different_registers(x, y),
+                (0x6, _, _, _) => self.load_in_register(x, kk),
+                (0x7, _, _, _) => self.add_constant(x, kk),
                 (0x8, _, _, 0x0) => self.copy_second_to_first(x, y),
                 (0x8, _, _, 0x1) => self.or(x, y),
                 (0x8, _, _, 0x2) => self.and(x, y),
@@ -69,11 +70,11 @@ impl CPU {
                 (0x8, _, _, 0x6) => self.shift_right(x),
                 (0x8, _, _, 0x7) => self.sub_registers_swapped(x, y),
                 (0x8, _, _, 0xE) => self.shift_left(x),
+                (0x9, _, _, 0x0) => self.skip_if_different_registers(x, y),
+                (0xA, _, _, _) => self.set_pointer_register(nnn),
+                (0xB, _, _, _) => self.offset_jump_to(nnn),
                 (0xC, _, _, _) => self.random_and_constant_in(x, kk),
-                (0x3, _, _, _) => self.skip_if_equal(x, kk),
-                (0x4, _, _, _) => self.skip_if_different(x, kk),
-                (0x6, _, _, _) => self.load_in_register(x, kk),
-                (0x7, _, _, _) => self.add_constant(x, kk),
+                (0xF, _, 0x1, 0xE) => self.add_to_pointer_register(x),
                 (0xF, _, 0x5, 0x5) => self.store_registers_up_to(x),
                 (0xF, _, 0x6, 0x5) => self.load_registers_up_to(x),
 
@@ -248,6 +249,9 @@ impl CPU {
         let index = register_index as usize;
         let start_address = self.pointer_register as usize;
         let end_address = start_address + index;
+        if self.memory.len() < end_address {
+            panic!("Writing out of memory bounds.");
+        }
         self.memory[start_address..=end_address].copy_from_slice(&self.registers[0..=index]);
     }
 
@@ -255,7 +259,14 @@ impl CPU {
         let index = register_index as usize;
         let start_address = self.pointer_register as usize;
         let end_address = start_address + index;
+        if self.memory.len() < end_address {
+            panic!("Illegal read.");
+        }
         self.registers[0..=index].copy_from_slice(&self.memory[start_address..=end_address]);
+    }
+
+    fn add_to_pointer_register(&mut self, register_index: u8){
+        self.pointer_register += self.registers[register_index as usize] as u16;
     }
 }
 
