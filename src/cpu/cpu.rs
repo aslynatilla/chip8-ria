@@ -2,6 +2,8 @@
 
 use std::ops::{ShlAssign, ShrAssign, BitAnd};
 use rand::Rng;
+use ggez::{conf::{self, WindowMode}, event::{self, EventHandler}, graphics::{self}, ContextBuilder, GameResult, Context};
+use ggez::graphics::Color;
 
 pub struct CPU {
     registers: [u8; 16],
@@ -10,6 +12,75 @@ pub struct CPU {
     stack: [u16; 16],
     stack_pointer: usize,
     pointer_register: u16,
+}
+
+struct CPULoop<'a>{
+    cpu: &'a mut CPU,
+    clear_display: bool,
+}
+
+impl<'a> CPULoop<'a>{
+    fn new_from(cpu : &'a mut CPU) -> Self{
+        CPULoop{
+            cpu,
+            clear_display: false,
+        }
+    }
+}
+
+impl<'a> EventHandler for CPULoop<'a>{
+    fn update(&mut self, ctx: &mut Context) -> GameResult {
+        let cpu = &mut self.cpu;
+        let op_code = cpu.read_opcode();
+        cpu.program_counter += 2;
+
+        let (c, x, y, d) = decompose_opcode(op_code);
+        let nnn = op_code & 0x0FFF;
+        let kk = (op_code & 0x00FF) as u8;
+
+        match (c, x, y, d) {
+            (0x0, 0x0, 0x0, 0x0) => event::quit(ctx),
+            (0x0, 0x0, 0xE, 0x0) => self.clear_display = true,
+            (0x0, 0x0, 0xE, 0xE) => cpu.ret(),
+            (0x1, _, _, _) => cpu.jump_to(nnn),
+            (0x2, _, _, _) => cpu.call(nnn),
+            (0x3, _, _, _) => cpu.skip_if_equal(x, kk),
+            (0x4, _, _, _) => cpu.skip_if_different(x, kk),
+            (0x5, _, _, 0x0) => cpu.skip_if_equal_registers(x, y),
+            (0x6, _, _, _) => cpu.load_in_register(x, kk),
+            (0x7, _, _, _) => cpu.add_constant(x, kk),
+            (0x8, _, _, 0x0) => cpu.copy_second_to_first(x, y),
+            (0x8, _, _, 0x1) => cpu.or(x, y),
+            (0x8, _, _, 0x2) => cpu.and(x, y),
+            (0x8, _, _, 0x3) => cpu.xor(x, y),
+            (0x8, _, _, 0x4) => cpu.add_registers(x, y),
+            (0x8, _, _, 0x5) => cpu.sub_registers(x, y),
+            (0x8, _, _, 0x6) => cpu.shift_right(x),
+            (0x8, _, _, 0x7) => cpu.sub_registers_swapped(x, y),
+            (0x8, _, _, 0xE) => cpu.shift_left(x),
+            (0x9, _, _, 0x0) => cpu.skip_if_different_registers(x, y),
+            (0xA, _, _, _) => cpu.set_pointer_register(nnn),
+            (0xB, _, _, _) => cpu.offset_jump_to(nnn),
+            (0xC, _, _, _) => cpu.random_and_constant_in(x, kk),
+            (0xF, _, 0x1, 0xE) => cpu.add_to_pointer_register(x),
+            (0xF, _, 0x3, 0x3) => cpu.store_as_bcd(x),
+            (0xF, _, 0x5, 0x5) => cpu.store_registers_up_to(x),
+            (0xF, _, 0x6, 0x5) => cpu.load_registers_up_to(x),
+
+            _ => todo!("opcode {:04x}", op_code),
+        }
+
+        Ok(())
+    }
+
+    fn draw(&mut self, ctx: &mut Context) -> GameResult {
+        if self.clear_display {
+            self.clear_display = false;
+            graphics::clear(ctx, Color::from_rgb(0,0,0));
+        }
+        graphics::present(ctx)?;
+        Ok(())
+    }
 }
 
 impl CPU {
@@ -43,45 +114,19 @@ impl CPU {
     }
 
     pub fn run(&mut self) {
-        'running: loop {
-            let op_code = self.read_opcode();
-            self.program_counter += 2;
+        let configuration = conf::Conf{
+            window_mode: WindowMode::default().dimensions(800f32, 800f32),
+            ..Default::default()
+        };
+        let (mut context, mut event_loop) =
+            ContextBuilder::new("CHIP-8 Emulator", "")
+                .conf(configuration)
+                .build()
+                .unwrap();
 
-            let (c, x, y, d) = decompose_opcode(op_code);
-            let nnn = op_code & 0x0FFF;
-            let kk = (op_code & 0x00FF) as u8;
-
-            match (c, x, y, d) {
-                (0, 0, 0, 0) => break 'running,
-                (0, 0, 0xE, 0xE) => self.ret(),
-                (0x1, _, _, _) => self.jump_to(nnn),
-                (0x2, _, _, _) => self.call(nnn),
-                (0x3, _, _, _) => self.skip_if_equal(x, kk),
-                (0x4, _, _, _) => self.skip_if_different(x, kk),
-                (0x5, _, _, 0x0) => self.skip_if_equal_registers(x, y),
-                (0x6, _, _, _) => self.load_in_register(x, kk),
-                (0x7, _, _, _) => self.add_constant(x, kk),
-                (0x8, _, _, 0x0) => self.copy_second_to_first(x, y),
-                (0x8, _, _, 0x1) => self.or(x, y),
-                (0x8, _, _, 0x2) => self.and(x, y),
-                (0x8, _, _, 0x3) => self.xor(x, y),
-                (0x8, _, _, 0x4) => self.add_registers(x, y),
-                (0x8, _, _, 0x5) => self.sub_registers(x, y),
-                (0x8, _, _, 0x6) => self.shift_right(x),
-                (0x8, _, _, 0x7) => self.sub_registers_swapped(x, y),
-                (0x8, _, _, 0xE) => self.shift_left(x),
-                (0x9, _, _, 0x0) => self.skip_if_different_registers(x, y),
-                (0xA, _, _, _) => self.set_pointer_register(nnn),
-                (0xB, _, _, _) => self.offset_jump_to(nnn),
-                (0xC, _, _, _) => self.random_and_constant_in(x, kk),
-                (0xF, _, 0x1, 0xE) => self.add_to_pointer_register(x),
-                (0xF, _, 0x3, 0x3) => self.store_as_bcd(x),
-                (0xF, _, 0x5, 0x5) => self.store_registers_up_to(x),
-                (0xF, _, 0x6, 0x5) => self.load_registers_up_to(x),
-
-                _ => todo!("opcode {:04x}", op_code),
-            }
-        }
+        let _r = event::run(&mut context,
+                            &mut event_loop,
+                            &mut CPULoop::new_from(self));
     }
 
     pub(in super) fn peek_register(&self, register_index: usize) -> u8 {
