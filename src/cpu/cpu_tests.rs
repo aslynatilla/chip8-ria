@@ -220,3 +220,17 @@ fn illegal_write_through_store(){
     ]);
     cpu.run();
 }
+
+#[test]
+fn storing_as_bcd(){
+    let mut cpu = CPU::new_with_memory(vec![
+        0xA0, 0x0A,     //  set pointer register to 0xFFF
+        0x60, 0xC0,     //  set register 0 to 192
+        0xF0, 0x33,     //  store register 0 as BCD
+        0xF2, 0x65,     //  load in registers up to register 2
+    ]);
+    cpu.run();
+    assert_eq!(cpu.peek_register(0), 1);
+    assert_eq!(cpu.peek_register(1), 9);
+    assert_eq!(cpu.peek_register(2), 2);
+}

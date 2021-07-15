@@ -75,6 +75,7 @@ impl CPU {
                 (0xB, _, _, _) => self.offset_jump_to(nnn),
                 (0xC, _, _, _) => self.random_and_constant_in(x, kk),
                 (0xF, _, 0x1, 0xE) => self.add_to_pointer_register(x),
+                (0xF, _, 0x3, 0x3) => self.store_as_bcd(x),
                 (0xF, _, 0x5, 0x5) => self.store_registers_up_to(x),
                 (0xF, _, 0x6, 0x5) => self.load_registers_up_to(x),
 
@@ -267,6 +268,15 @@ impl CPU {
 
     fn add_to_pointer_register(&mut self, register_index: u8){
         self.pointer_register += self.registers[register_index as usize] as u16;
+    }
+    fn store_as_bcd(&mut self, register_index: u8) {
+        let i = self.pointer_register as usize;
+        let value = self.registers[register_index as usize];
+        //  Note that u8 can't represent four-digit numbers, so there is no
+        //  need to compute: value % 1000
+        self.memory[i+0] = value / 100u8;
+        self.memory[i+1] = (value % 100u8) / 10u8;
+        self.memory[i+2] = value % 10u8;
     }
 }
 
