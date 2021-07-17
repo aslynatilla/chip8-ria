@@ -1,13 +1,12 @@
 #![allow(dead_code)]
 
-use std::ops::{ShlAssign, ShrAssign, BitAnd, Div};
+use std::ops::{ShlAssign, ShrAssign, BitAnd, Div, Rem};
 use rand::Rng;
 use ggez::{conf::{self, WindowMode}, event::{self, EventHandler}, graphics::{self}, ContextBuilder, GameResult, Context};
 use ggez::graphics::Color;
 
 struct CPULoop<'a>{
     cpu: &'a mut CPU,
-    clear_display: bool,
 }
 
 pub struct CPU {
@@ -17,13 +16,14 @@ pub struct CPU {
     stack: [u16; 16],
     stack_pointer: usize,
     pointer_register: u16,
+
+    display: [bool; 2048],     //64*32 "booleans" as a display, subdivided in u8
 }
 
 impl<'a> CPULoop<'a>{
     fn new_from(cpu : &'a mut CPU) -> Self{
         CPULoop{
             cpu,
-            clear_display: false,
         }
     }
 }
@@ -41,7 +41,7 @@ impl<'a> EventHandler for CPULoop<'a>{
 
             match (c, x, y, d) {
                 (0x0, 0x0, 0x0, 0x0) => event::quit(ctx),
-                (0x0, 0x0, 0xE, 0x0) => self.clear_display = true,
+                (0x0, 0x0, 0xE, 0x0) => cpu.clear_display(),
                 (0x0, 0x0, 0xE, 0xE) => cpu.ret(),
                 (0x1, _, _, _) => cpu.jump_to(nnn),
                 (0x2, _, _, _) => cpu.call(nnn),
@@ -63,6 +63,7 @@ impl<'a> EventHandler for CPULoop<'a>{
                 (0xA, _, _, _) => cpu.set_pointer_register(nnn),
                 (0xB, _, _, _) => cpu.offset_jump_to(nnn),
                 (0xC, _, _, _) => cpu.random_and_constant_in(x, kk),
+                (0xD, _, _, _) => cpu.draw_at(x, y, d),
                 (0xF, _, 0x1, 0xE) => cpu.add_to_pointer_register(x),
                 (0xF, _, 0x2, 0x9) => cpu.point_to_font_char(x),
                 (0xF, _, 0x3, 0x3) => cpu.store_as_bcd(x),
@@ -76,10 +77,6 @@ impl<'a> EventHandler for CPULoop<'a>{
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
-        if self.clear_display {
-            self.clear_display = false;
-            graphics::clear(ctx, Color::from_rgb(0,0,0));
-        }
         graphics::present(ctx)?;
         Ok(())
     }
@@ -107,7 +104,7 @@ impl CPU {
                 0xF0, 0x80, 0xF0, 0x80, 0xF0,
                 0xF0, 0x80, 0xF0, 0x80, 0x80
             ];
-        memory.copy_from_slice(&init_memory);
+        memory[0..82].copy_from_slice(&init_memory);
         CPU {
             registers: [0u8; 16],
             program_counter: 0,
@@ -115,20 +112,21 @@ impl CPU {
             stack: [0u16; 16],
             stack_pointer: 0,
             pointer_register: 0,
+            display: [false; 2048]
         }
     }
 
     pub fn new(registers: [u8; 16], memory_init: Vec<u8>) -> CPU {
         let mut cpu = CPU::default();
         cpu.registers = registers;
-        cpu.memory[0x200..memory_init.len()].copy_from_slice(memory_init.as_slice());
+        cpu.memory[0x200..0x200+memory_init.len()].copy_from_slice(memory_init.as_slice());
         cpu
     }
 
     //TODO: find a better name for this function
     pub fn new_with_memory(memory_init: Vec<u8>) -> CPU {
         let mut cpu = CPU::default();
-        cpu.memory[0x200..memory_init.len()].copy_from_slice(memory_init.as_slice());
+        cpu.memory[0x200..0x200+memory_init.len()].copy_from_slice(memory_init.as_slice());
         cpu
     }
 
@@ -142,6 +140,8 @@ impl CPU {
                 .conf(configuration)
                 .build()
                 .unwrap();
+
+        graphics::clear(&mut context, Color::from_rgb(0,0,0));
 
         let _r = event::run(&mut context,
                             &mut event_loop,
@@ -350,6 +350,37 @@ impl CPU {
             panic!("Unrepresentable character!");
         }
         self.pointer_register = 2 + 5 * char as u16;
+    }
+
+    fn draw_at(&mut self, first_index: u8, second_index: u8, byte_number: u8) {
+        let x_coord = self.registers[first_index as usize].rem(64u8);
+        let y_coord = self.registers[second_index as usize].rem(32u8);
+        self.registers[0xF] = 0;
+        let i = self.pointer_register as usize;
+        let sprite = &self.memory[i..i+(byte_number as usize)];
+
+        'rows: for i in 0..byte_number{
+            if y_coord + i >= 32 {
+                break 'rows;
+            }
+            let byte = sprite[i as usize];
+            'cols: for j in 0..8{
+                if x_coord + j >= 64 {
+                    break 'cols;
+                }
+                let current_bit = ((byte >> j) & 0x01) != 0;
+                let display_row = y_coord + i;
+                let display_column = x_coord + j;
+                let display_index = 64 * display_row + display_column;
+                let current_display_bit = self.display[display_index as usize];
+                self.display[display_index as usize] = current_display_bit ^ current_bit;
+                self.registers[0xF] = (current_display_bit & current_bit) as u8;
+            }
+        }
+    }
+
+    fn clear_display(&mut self) {
+        self.display = [false; 2048];
     }
 }
 
