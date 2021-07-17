@@ -1,9 +1,14 @@
 #![allow(dead_code)]
 
-use std::ops::{ShlAssign, ShrAssign, BitAnd};
+use std::ops::{ShlAssign, ShrAssign, BitAnd, Div};
 use rand::Rng;
 use ggez::{conf::{self, WindowMode}, event::{self, EventHandler}, graphics::{self}, ContextBuilder, GameResult, Context};
 use ggez::graphics::Color;
+
+struct CPULoop<'a>{
+    cpu: &'a mut CPU,
+    clear_display: bool,
+}
 
 pub struct CPU {
     registers: [u8; 16],
@@ -12,11 +17,6 @@ pub struct CPU {
     stack: [u16; 16],
     stack_pointer: usize,
     pointer_register: u16,
-}
-
-struct CPULoop<'a>{
-    cpu: &'a mut CPU,
-    clear_display: bool,
 }
 
 impl<'a> CPULoop<'a>{
@@ -64,6 +64,7 @@ impl<'a> EventHandler for CPULoop<'a>{
                 (0xB, _, _, _) => cpu.offset_jump_to(nnn),
                 (0xC, _, _, _) => cpu.random_and_constant_in(x, kk),
                 (0xF, _, 0x1, 0xE) => cpu.add_to_pointer_register(x),
+                (0xF, _, 0x2, 0x9) => cpu.point_to_font_char(x),
                 (0xF, _, 0x3, 0x3) => cpu.store_as_bcd(x),
                 (0xF, _, 0x5, 0x5) => cpu.store_registers_up_to(x),
                 (0xF, _, 0x6, 0x5) => cpu.load_registers_up_to(x),
@@ -86,31 +87,48 @@ impl<'a> EventHandler for CPULoop<'a>{
 
 impl CPU {
     pub fn default() -> CPU {
+        let mut memory = [0u8; 0x1000];
+        let init_memory : [u8; 82] =
+            [   0x12, 0x00,                     //  Jump to 0x200
+                0xF0, 0x90, 0x90, 0x90, 0xF0,   //  Font set starts here
+                0x20, 0x60, 0x20, 0x20, 0x70,
+                0xF0, 0x10, 0xF0, 0x80, 0xF0,
+                0xF0, 0x10, 0xF0, 0x10, 0xF0,
+                0x90, 0x90, 0xF0, 0x10, 0x10,
+                0xF0, 0x80, 0xF0, 0x10, 0xF0,
+                0xF0, 0x80, 0xF0, 0x90, 0xF0,
+                0xF0, 0x10, 0x20, 0x40, 0x40,
+                0xF0, 0x90, 0xF0, 0x90, 0xF0,
+                0xF0, 0x90, 0xF0, 0x10, 0xF0,
+                0xF0, 0x90, 0xF0, 0x90, 0x90,
+                0xE0, 0x90, 0xE0, 0x90, 0xE0,
+                0xF0, 0x80, 0x80, 0x80, 0xF0,
+                0xE0, 0x90, 0x90, 0x90, 0xE0,
+                0xF0, 0x80, 0xF0, 0x80, 0xF0,
+                0xF0, 0x80, 0xF0, 0x80, 0x80
+            ];
+        memory.copy_from_slice(&init_memory);
         CPU {
             registers: [0u8; 16],
             program_counter: 0,
-            memory: [0u8; 0x1000],
+            memory,
             stack: [0u16; 16],
             stack_pointer: 0,
             pointer_register: 0,
         }
     }
 
-    pub fn new(registers: [u8; 16], memory: [u8; 0x1000]) -> CPU {
-        CPU {
-            registers,
-            memory,
-            program_counter: 0,
-            stack: [0; 16],
-            stack_pointer: 0,
-            pointer_register: 0,
-        }
+    pub fn new(registers: [u8; 16], memory_init: Vec<u8>) -> CPU {
+        let mut cpu = CPU::default();
+        cpu.registers = registers;
+        cpu.memory[0x200..memory_init.len()].copy_from_slice(memory_init.as_slice());
+        cpu
     }
 
     //TODO: find a better name for this function
-    pub fn new_with_memory(memory_initializer: Vec<u8>) -> CPU {
+    pub fn new_with_memory(memory_init: Vec<u8>) -> CPU {
         let mut cpu = CPU::default();
-        cpu.memory[0x0..memory_initializer.len()].copy_from_slice(memory_initializer.as_slice());
+        cpu.memory[0x200..memory_init.len()].copy_from_slice(memory_init.as_slice());
         cpu
     }
 
@@ -315,6 +333,7 @@ impl CPU {
     fn add_to_pointer_register(&mut self, register_index: u8){
         self.pointer_register += self.registers[register_index as usize] as u16;
     }
+
     fn store_as_bcd(&mut self, register_index: u8) {
         let i = self.pointer_register as usize;
         let value = self.registers[register_index as usize];
@@ -323,6 +342,14 @@ impl CPU {
         self.memory[i+0] = value / 100u8;
         self.memory[i+1] = (value % 100u8) / 10u8;
         self.memory[i+2] = value % 10u8;
+    }
+
+    fn point_to_font_char(&mut self, register_index: u8){
+        let char = self.registers[register_index as usize];
+        if char.div(16u8) > 0 {    //  if it is a number between 0 and 15
+            panic!("Unrepresentable character!");
+        }
+        self.pointer_register = 2 + 5 * char as u16;
     }
 }
 
