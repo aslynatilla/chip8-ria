@@ -31,45 +31,46 @@ impl<'a> CPULoop<'a>{
 impl<'a> EventHandler for CPULoop<'a>{
     fn update(&mut self, ctx: &mut Context) -> GameResult {
         let cpu = &mut self.cpu;
-        let op_code = cpu.read_opcode();
-        cpu.program_counter += 2;
+        while ggez::timer::check_update_time(ctx, 30) {
+            let op_code = cpu.read_opcode();
+            cpu.program_counter += 2;
 
-        let (c, x, y, d) = decompose_opcode(op_code);
-        let nnn = op_code & 0x0FFF;
-        let kk = (op_code & 0x00FF) as u8;
+            let (c, x, y, d) = decompose_opcode(op_code);
+            let nnn = op_code & 0x0FFF;
+            let kk = (op_code & 0x00FF) as u8;
 
-        match (c, x, y, d) {
-            (0x0, 0x0, 0x0, 0x0) => event::quit(ctx),
-            (0x0, 0x0, 0xE, 0x0) => self.clear_display = true,
-            (0x0, 0x0, 0xE, 0xE) => cpu.ret(),
-            (0x1, _, _, _) => cpu.jump_to(nnn),
-            (0x2, _, _, _) => cpu.call(nnn),
-            (0x3, _, _, _) => cpu.skip_if_equal(x, kk),
-            (0x4, _, _, _) => cpu.skip_if_different(x, kk),
-            (0x5, _, _, 0x0) => cpu.skip_if_equal_registers(x, y),
-            (0x6, _, _, _) => cpu.load_in_register(x, kk),
-            (0x7, _, _, _) => cpu.add_constant(x, kk),
-            (0x8, _, _, 0x0) => cpu.copy_second_to_first(x, y),
-            (0x8, _, _, 0x1) => cpu.or(x, y),
-            (0x8, _, _, 0x2) => cpu.and(x, y),
-            (0x8, _, _, 0x3) => cpu.xor(x, y),
-            (0x8, _, _, 0x4) => cpu.add_registers(x, y),
-            (0x8, _, _, 0x5) => cpu.sub_registers(x, y),
-            (0x8, _, _, 0x6) => cpu.shift_right(x),
-            (0x8, _, _, 0x7) => cpu.sub_registers_swapped(x, y),
-            (0x8, _, _, 0xE) => cpu.shift_left(x),
-            (0x9, _, _, 0x0) => cpu.skip_if_different_registers(x, y),
-            (0xA, _, _, _) => cpu.set_pointer_register(nnn),
-            (0xB, _, _, _) => cpu.offset_jump_to(nnn),
-            (0xC, _, _, _) => cpu.random_and_constant_in(x, kk),
-            (0xF, _, 0x1, 0xE) => cpu.add_to_pointer_register(x),
-            (0xF, _, 0x3, 0x3) => cpu.store_as_bcd(x),
-            (0xF, _, 0x5, 0x5) => cpu.store_registers_up_to(x),
-            (0xF, _, 0x6, 0x5) => cpu.load_registers_up_to(x),
+            match (c, x, y, d) {
+                (0x0, 0x0, 0x0, 0x0) => event::quit(ctx),
+                (0x0, 0x0, 0xE, 0x0) => self.clear_display = true,
+                (0x0, 0x0, 0xE, 0xE) => cpu.ret(),
+                (0x1, _, _, _) => cpu.jump_to(nnn),
+                (0x2, _, _, _) => cpu.call(nnn),
+                (0x3, _, _, _) => cpu.skip_if_equal(x, kk),
+                (0x4, _, _, _) => cpu.skip_if_different(x, kk),
+                (0x5, _, _, 0x0) => cpu.skip_if_equal_registers(x, y),
+                (0x6, _, _, _) => cpu.load_in_register(x, kk),
+                (0x7, _, _, _) => cpu.add_constant(x, kk),
+                (0x8, _, _, 0x0) => cpu.copy_second_to_first(x, y),
+                (0x8, _, _, 0x1) => cpu.or(x, y),
+                (0x8, _, _, 0x2) => cpu.and(x, y),
+                (0x8, _, _, 0x3) => cpu.xor(x, y),
+                (0x8, _, _, 0x4) => cpu.add_registers(x, y),
+                (0x8, _, _, 0x5) => cpu.sub_registers(x, y),
+                (0x8, _, _, 0x6) => cpu.shift_right(x),
+                (0x8, _, _, 0x7) => cpu.sub_registers_swapped(x, y),
+                (0x8, _, _, 0xE) => cpu.shift_left(x),
+                (0x9, _, _, 0x0) => cpu.skip_if_different_registers(x, y),
+                (0xA, _, _, _) => cpu.set_pointer_register(nnn),
+                (0xB, _, _, _) => cpu.offset_jump_to(nnn),
+                (0xC, _, _, _) => cpu.random_and_constant_in(x, kk),
+                (0xF, _, 0x1, 0xE) => cpu.add_to_pointer_register(x),
+                (0xF, _, 0x3, 0x3) => cpu.store_as_bcd(x),
+                (0xF, _, 0x5, 0x5) => cpu.store_registers_up_to(x),
+                (0xF, _, 0x6, 0x5) => cpu.load_registers_up_to(x),
 
-            _ => todo!("opcode {:04x}", op_code),
+                _ => todo!("opcode {:04x}", op_code),
+            }
         }
-
         Ok(())
     }
 
@@ -115,7 +116,7 @@ impl CPU {
 
     pub fn run(&mut self) {
         let configuration = conf::Conf{
-            window_mode: WindowMode::default().dimensions(800f32, 800f32),
+            window_mode: WindowMode::default().dimensions(640f32, 320f32),
             ..Default::default()
         };
         let (mut context, mut event_loop) =
