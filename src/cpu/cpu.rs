@@ -3,7 +3,7 @@
 use std::ops::{ShlAssign, ShrAssign, BitAnd, Div, Rem};
 use rand::Rng;
 use ggez::{conf::{self, WindowMode}, event::{self, EventHandler}, graphics::{self}, ContextBuilder, GameResult, Context};
-use ggez::graphics::Color;
+use ggez::graphics::{Color, DrawParam, FilterMode};
 
 struct CPULoop<'a>{
     cpu: &'a mut CPU,
@@ -18,6 +18,7 @@ pub struct CPU {
     pointer_register: u16,
 
     display: [bool; 2048],     //64*32 "booleans" as a display, subdivided in u8
+    dirty_display: bool
 }
 
 impl<'a> CPULoop<'a>{
@@ -77,6 +78,22 @@ impl<'a> EventHandler for CPULoop<'a>{
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
+        if self.cpu.dirty_display {
+            let image_bytes = self.cpu.display.iter()
+                .map(|bit| match bit {
+                    true => vec![255u8, 255u8, 255u8, 255u8],
+                    false => vec![0u8, 0u8, 0u8, 255u8]
+                })
+                .flatten()
+                .collect::<Vec<u8>>();
+
+            let mut image =
+                ggez::graphics::Image::from_rgba8(ctx, 64, 32, &image_bytes)?;
+            let draw_params = DrawParam::default().scale([10.0, 10.0]);
+            image.set_filter(FilterMode::Nearest);
+            ggez::graphics::draw(ctx, &image, draw_params)?;
+            self.cpu.dirty_display = false;
+        }
         graphics::present(ctx)?;
         Ok(())
     }
@@ -112,7 +129,8 @@ impl CPU {
             stack: [0u16; 16],
             stack_pointer: 0,
             pointer_register: 0,
-            display: [false; 2048]
+            display: [false; 2048],
+            dirty_display: false
         }
     }
 
@@ -356,27 +374,30 @@ impl CPU {
         let x_coord = self.registers[first_index as usize].rem(64u8);
         let y_coord = self.registers[second_index as usize].rem(32u8);
         self.registers[0xF] = 0;
-        let i = self.pointer_register as usize;
-        let sprite = &self.memory[i..i+(byte_number as usize)];
+        let ptr_register = self.pointer_register as usize;
+        let sprite = &self.memory[ptr_register..ptr_register+(byte_number as usize)];
 
         'rows: for i in 0..byte_number{
-            if y_coord + i >= 32 {
+            if y_coord + i > 32 {
                 break 'rows;
             }
             let byte = sprite[i as usize];
             'cols: for j in 0..8{
-                if x_coord + j >= 64 {
+                if x_coord + j > 64 {
                     break 'cols;
                 }
+                let byte = byte.reverse_bits() as u8;
                 let current_bit = ((byte >> j) & 0x01) != 0;
-                let display_row = y_coord + i;
-                let display_column = x_coord + j;
+                let display_row = (y_coord + i) as usize;
+                let display_column = (x_coord + j) as usize;
                 let display_index = 64 * display_row + display_column;
-                let current_display_bit = self.display[display_index as usize];
+                let current_display_bit = self.display[display_index];
                 self.display[display_index as usize] = current_display_bit ^ current_bit;
                 self.registers[0xF] = (current_display_bit & current_bit) as u8;
             }
         }
+
+        self.dirty_display = true;
     }
 
     fn clear_display(&mut self) {
