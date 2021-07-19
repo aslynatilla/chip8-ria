@@ -4,10 +4,9 @@ use std::ops::{ShlAssign, ShrAssign, BitAnd, Div, Rem};
 use rand::Rng;
 use ggez::{conf::{self, WindowMode}, event::{self, EventHandler}, graphics::{self}, ContextBuilder, GameResult, Context};
 use ggez::graphics::{Color, DrawParam, FilterMode};
-
-struct CPULoop<'a>{
-    cpu: &'a mut CPU,
-}
+use ggez::event::winit_event::{Event, WindowEvent, KeyboardInput, ElementState};
+use ggez::input::keyboard;
+use ggez::conf::WindowSetup;
 
 pub struct CPU {
     registers: [u8; 16],
@@ -17,69 +16,22 @@ pub struct CPU {
     stack_pointer: usize,
     pointer_register: u16,
 
-    display: [bool; 2048],     //64*32 "booleans" as a display, subdivided in u8
-    dirty_display: bool
+    display: VirtualDisplay<bool>,
 }
 
-impl<'a> CPULoop<'a>{
-    fn new_from(cpu : &'a mut CPU) -> Self{
-        CPULoop{
-            cpu,
-        }
-    }
+struct VirtualDisplay<T>{
+    data: [T; 2048],     //  size is 64*32
+    dirty_bit: bool,
 }
 
-impl<'a> EventHandler for CPULoop<'a>{
-    fn update(&mut self, ctx: &mut Context) -> GameResult {
-        let cpu = &mut self.cpu;
-        while ggez::timer::check_update_time(ctx, 30) {
-            let op_code = cpu.read_opcode();
-            cpu.program_counter += 2;
-
-            let (c, x, y, d) = decompose_opcode(op_code);
-            let nnn = op_code & 0x0FFF;
-            let kk = (op_code & 0x00FF) as u8;
-
-            match (c, x, y, d) {
-                (0x0, 0x0, 0x0, 0x0) => event::quit(ctx),
-                (0x0, 0x0, 0xE, 0x0) => cpu.clear_display(),
-                (0x0, 0x0, 0xE, 0xE) => cpu.ret(),
-                (0x1, _, _, _) => cpu.jump_to(nnn),
-                (0x2, _, _, _) => cpu.call(nnn),
-                (0x3, _, _, _) => cpu.skip_if_equal(x, kk),
-                (0x4, _, _, _) => cpu.skip_if_different(x, kk),
-                (0x5, _, _, 0x0) => cpu.skip_if_equal_registers(x, y),
-                (0x6, _, _, _) => cpu.load_in_register(x, kk),
-                (0x7, _, _, _) => cpu.add_constant(x, kk),
-                (0x8, _, _, 0x0) => cpu.copy_second_to_first(x, y),
-                (0x8, _, _, 0x1) => cpu.or(x, y),
-                (0x8, _, _, 0x2) => cpu.and(x, y),
-                (0x8, _, _, 0x3) => cpu.xor(x, y),
-                (0x8, _, _, 0x4) => cpu.add_registers(x, y),
-                (0x8, _, _, 0x5) => cpu.sub_registers(x, y),
-                (0x8, _, _, 0x6) => cpu.shift_right(x),
-                (0x8, _, _, 0x7) => cpu.sub_registers_swapped(x, y),
-                (0x8, _, _, 0xE) => cpu.shift_left(x),
-                (0x9, _, _, 0x0) => cpu.skip_if_different_registers(x, y),
-                (0xA, _, _, _) => cpu.set_pointer_register(nnn),
-                (0xB, _, _, _) => cpu.offset_jump_to(nnn),
-                (0xC, _, _, _) => cpu.random_and_constant_in(x, kk),
-                (0xD, _, _, _) => cpu.draw_at(x, y, d),
-                (0xF, _, 0x1, 0xE) => cpu.add_to_pointer_register(x),
-                (0xF, _, 0x2, 0x9) => cpu.point_to_font_char(x),
-                (0xF, _, 0x3, 0x3) => cpu.store_as_bcd(x),
-                (0xF, _, 0x5, 0x5) => cpu.store_registers_up_to(x),
-                (0xF, _, 0x6, 0x5) => cpu.load_registers_up_to(x),
-
-                _ => todo!("opcode {:04x}", op_code),
-            }
-        }
+impl EventHandler for VirtualDisplay<bool>{
+    fn update(&mut self, _ctx: &mut Context) -> GameResult {
         Ok(())
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
-        if self.cpu.dirty_display {
-            let image_bytes = self.cpu.display.iter()
+        if self.dirty_bit {
+            let image_bytes = self.data.iter()
                 .map(|bit| match bit {
                     true => vec![255u8, 255u8, 255u8, 255u8],
                     false => vec![0u8, 0u8, 0u8, 255u8]
@@ -92,7 +44,7 @@ impl<'a> EventHandler for CPULoop<'a>{
             let draw_params = DrawParam::default().scale([10.0, 10.0]);
             image.set_filter(FilterMode::Nearest);
             ggez::graphics::draw(ctx, &image, draw_params)?;
-            self.cpu.dirty_display = false;
+            self.dirty_bit = false;
         }
         graphics::present(ctx)?;
         Ok(())
@@ -129,8 +81,10 @@ impl CPU {
             stack: [0u16; 16],
             stack_pointer: 0,
             pointer_register: 0,
-            display: [false; 2048],
-            dirty_display: false
+            display: VirtualDisplay{
+                data: [false; 2048],
+                dirty_bit: false
+            }
         }
     }
 
@@ -151,19 +105,123 @@ impl CPU {
     pub fn run(&mut self) {
         let configuration = conf::Conf{
             window_mode: WindowMode::default().dimensions(640f32, 320f32),
+            window_setup: WindowSetup::default().title("CHIP-8 Emulator").vsync(true),
             ..Default::default()
         };
-        let (mut context, mut event_loop) =
+        let (mut ctx, mut event_loop) =
             ContextBuilder::new("CHIP-8 Emulator", "")
                 .conf(configuration)
                 .build()
                 .unwrap();
 
-        graphics::clear(&mut context, Color::from_rgb(0,0,0));
+        graphics::clear(&mut ctx, Color::from_rgb(0,0,0));
 
-        let _r = event::run(&mut context,
-                            &mut event_loop,
-                            &mut CPULoop::new_from(self));
+        while ctx.continuing {
+            ctx.timer_context.tick();
+            event_loop.poll_events(|event| {
+                ctx.process_event(&event);
+                {
+                    let state = &mut self.display;
+                    match event {
+                        Event::WindowEvent { event, .. } => match event {
+                            WindowEvent::Resized(logical_size) => {
+                                // let actual_size = logical_size;
+                                state.resize_event(
+                                    &mut ctx,
+                                    logical_size.width as f32,
+                                    logical_size.height as f32,
+                                );
+                            }
+                            WindowEvent::CloseRequested => {
+                                if !state.quit_event(&mut ctx) {
+                                    ggez::event::quit(&mut ctx);
+                                }
+                            }
+                            WindowEvent::Focused(gained) => {
+                                state.focus_event(&mut ctx, gained);
+                            }
+                            WindowEvent::ReceivedCharacter(ch) => {
+                                state.text_input_event(&mut ctx, ch);
+                            }
+                            WindowEvent::KeyboardInput {
+                                input:
+                                KeyboardInput {
+                                    state: ElementState::Pressed,
+                                    virtual_keycode: Some(keycode),
+                                    modifiers,
+                                    ..
+                                },
+                                ..
+                            } => {
+                                let repeat = keyboard::is_key_repeated(&mut ctx);
+                                state.key_down_event(&mut ctx, keycode, modifiers.into(), repeat);
+                            }
+                            WindowEvent::KeyboardInput {
+                                input:
+                                KeyboardInput {
+                                    state: ElementState::Released,
+                                    virtual_keycode: Some(keycode),
+                                    modifiers,
+                                    ..
+                                },
+                                ..
+                            } => {
+                                state.key_up_event(&mut ctx, keycode, modifiers.into());
+                            },
+
+                            _ => (),
+                        }
+                        _ => (),
+                    }}}
+                );
+
+
+            while ggez::timer::check_update_time(&mut ctx, 60) {
+                let op_code = self.read_opcode();
+                self.program_counter += 2;
+
+                let (c, x, y, d) = decompose_opcode(op_code);
+                let nnn = op_code & 0x0FFF;
+                let kk = (op_code & 0x00FF) as u8;
+
+                match (c, x, y, d) {
+                    (0x0, 0x0, 0x0, 0x0) => event::quit(&mut ctx),
+                    (0x0, 0x0, 0xE, 0x0) => self.clear_display(),
+                    (0x0, 0x0, 0xE, 0xE) => self.ret(),
+                    (0x1, _, _, _) => self.jump_to(nnn),
+                    (0x2, _, _, _) => self.call(nnn),
+                    (0x3, _, _, _) => self.skip_if_equal(x, kk),
+                    (0x4, _, _, _) => self.skip_if_different(x, kk),
+                    (0x5, _, _, 0x0) => self.skip_if_equal_registers(x, y),
+                    (0x6, _, _, _) => self.load_in_register(x, kk),
+                    (0x7, _, _, _) => self.add_constant(x, kk),
+                    (0x8, _, _, 0x0) => self.copy_second_to_first(x, y),
+                    (0x8, _, _, 0x1) => self.or(x, y),
+                    (0x8, _, _, 0x2) => self.and(x, y),
+                    (0x8, _, _, 0x3) => self.xor(x, y),
+                    (0x8, _, _, 0x4) => self.add_registers(x, y),
+                    (0x8, _, _, 0x5) => self.sub_registers(x, y),
+                    (0x8, _, _, 0x6) => self.shift_right(x),
+                    (0x8, _, _, 0x7) => self.sub_registers_swapped(x, y),
+                    (0x8, _, _, 0xE) => self.shift_left(x),
+                    (0x9, _, _, 0x0) => self.skip_if_different_registers(x, y),
+                    (0xA, _, _, _) => self.set_pointer_register(nnn),
+                    (0xB, _, _, _) => self.offset_jump_to(nnn),
+                    (0xC, _, _, _) => self.random_and_constant_in(x, kk),
+                    (0xD, _, _, _) => self.draw_at(x, y, d),
+                    (0xF, _, 0x1, 0xE) => self.add_to_pointer_register(x),
+                    (0xF, _, 0x2, 0x9) => self.point_to_font_char(x),
+                    (0xF, _, 0x3, 0x3) => self.store_as_bcd(x),
+                    (0xF, _, 0x5, 0x5) => self.store_registers_up_to(x),
+                    (0xF, _, 0x6, 0x5) => self.load_registers_up_to(x),
+
+                    _ => todo!("opcode {:04x}", op_code),
+                }
+            }
+
+            let state = &mut self.display;
+            state.draw(&mut ctx).unwrap();
+        }
     }
 
     pub(in super) fn peek_register(&self, register_index: usize) -> u8 {
@@ -370,7 +428,7 @@ impl CPU {
         self.pointer_register = 2 + 5 * char as u16;
     }
 
-    fn draw_at(&mut self, first_index: u8, second_index: u8, byte_number: u8) {
+    fn draw_at(&mut self, first_index: u8, second_index: u8, byte_number: u8){
         let x_coord = self.registers[first_index as usize].rem(64u8);
         let y_coord = self.registers[second_index as usize].rem(32u8);
         self.registers[0xF] = 0;
@@ -391,17 +449,17 @@ impl CPU {
                 let display_row = (y_coord + i) as usize;
                 let display_column = (x_coord + j) as usize;
                 let display_index = 64 * display_row + display_column;
-                let current_display_bit = self.display[display_index];
-                self.display[display_index as usize] = current_display_bit ^ current_bit;
+                let current_display_bit = self.display.data[display_index];
+                self.display.data[display_index as usize] = current_display_bit ^ current_bit;
                 self.registers[0xF] = (current_display_bit & current_bit) as u8;
             }
         }
 
-        self.dirty_display = true;
+        self.display.dirty_bit = true;
     }
 
     fn clear_display(&mut self) {
-        self.display = [false; 2048];
+        self.display.data = [false; 2048];
     }
 }
 
