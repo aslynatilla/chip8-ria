@@ -7,6 +7,7 @@ use ggez::graphics::{Color, DrawParam, FilterMode};
 use ggez::event::winit_event::{Event, WindowEvent, KeyboardInput, ElementState};
 use ggez::input::keyboard;
 use ggez::conf::WindowSetup;
+use ggez::event::EventsLoop;
 
 pub struct CPU {
     registers: [u8; 16],
@@ -105,16 +106,7 @@ impl CPU {
     }
 
     pub fn run(&mut self) {
-        let configuration = conf::Conf {
-            window_mode: WindowMode::default().dimensions(640f32, 320f32),
-            window_setup: WindowSetup::default().title("CHIP-8 Emulator").vsync(true),
-            ..Default::default()
-        };
-        let (mut ctx, mut event_loop) =
-            ContextBuilder::new("CHIP-8 Emulator", "")
-                .conf(configuration)
-                .build()
-                .unwrap();
+        let (mut ctx, mut event_loop) = CPU::create_context_and_loop();
 
         graphics::clear(&mut ctx, Color::from_rgb(0, 0, 0));
 
@@ -132,6 +124,19 @@ impl CPU {
 
             self.display.draw(&mut ctx).unwrap();
         }
+    }
+
+    fn create_context_and_loop() -> (Context, EventsLoop) {
+        let configuration = conf::Conf {
+            window_mode: WindowMode::default().dimensions(640f32, 320f32),
+            window_setup: WindowSetup::default().title("CHIP-8 Emulator").vsync(true),
+            ..Default::default()
+        };
+
+        ContextBuilder::new("CHIP-8 Emulator", "")
+            .conf(configuration)
+            .build()
+            .unwrap()
     }
 
     fn emulate_cycle(&mut self, mut ctx: &mut Context) {
