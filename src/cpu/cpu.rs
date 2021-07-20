@@ -19,12 +19,14 @@ pub struct CPU {
     display: VirtualDisplay<bool>,
 }
 
-struct VirtualDisplay<T>{
-    data: [T; 2048],     //  size is 64*32
+#[derive(Clone)]
+struct VirtualDisplay<T> {
+    data: [T; 2048],
+    //  size is 64*32
     dirty_bit: bool,
 }
 
-impl EventHandler for VirtualDisplay<bool>{
+impl EventHandler for VirtualDisplay<bool> {
     fn update(&mut self, _ctx: &mut Context) -> GameResult {
         Ok(())
     }
@@ -54,8 +56,8 @@ impl EventHandler for VirtualDisplay<bool>{
 impl CPU {
     pub fn default() -> CPU {
         let mut memory = [0u8; 0x1000];
-        let init_memory : [u8; 82] =
-            [   0x12, 0x00,                     //  Jump to 0x200
+        let init_memory: [u8; 82] =
+            [0x12, 0x00,                     //  Jump to 0x200
                 0xF0, 0x90, 0x90, 0x90, 0xF0,   //  Font set starts here
                 0x20, 0x60, 0x20, 0x20, 0x70,
                 0xF0, 0x10, 0xF0, 0x80, 0xF0,
@@ -81,29 +83,29 @@ impl CPU {
             stack: [0u16; 16],
             stack_pointer: 0,
             pointer_register: 0,
-            display: VirtualDisplay{
+            display: VirtualDisplay {
                 data: [false; 2048],
-                dirty_bit: false
-            }
+                dirty_bit: false,
+            },
         }
     }
 
     pub fn new(registers: [u8; 16], memory_init: Vec<u8>) -> CPU {
         let mut cpu = CPU::default();
         cpu.registers = registers;
-        cpu.memory[0x200..0x200+memory_init.len()].copy_from_slice(memory_init.as_slice());
+        cpu.memory[0x200..0x200 + memory_init.len()].copy_from_slice(memory_init.as_slice());
         cpu
     }
 
     //TODO: find a better name for this function
     pub fn new_with_memory(memory_init: Vec<u8>) -> CPU {
         let mut cpu = CPU::default();
-        cpu.memory[0x200..0x200+memory_init.len()].copy_from_slice(memory_init.as_slice());
+        cpu.memory[0x200..0x200 + memory_init.len()].copy_from_slice(memory_init.as_slice());
         cpu
     }
 
     pub fn run(&mut self) {
-        let configuration = conf::Conf{
+        let configuration = conf::Conf {
             window_mode: WindowMode::default().dimensions(640f32, 320f32),
             window_setup: WindowSetup::default().title("CHIP-8 Emulator").vsync(true),
             ..Default::default()
@@ -114,113 +116,119 @@ impl CPU {
                 .build()
                 .unwrap();
 
-        graphics::clear(&mut ctx, Color::from_rgb(0,0,0));
+        graphics::clear(&mut ctx, Color::from_rgb(0, 0, 0));
 
         while ctx.continuing {
             ctx.timer_context.tick();
             event_loop.poll_events(|event| {
-                ctx.process_event(&event);
-                {
-                    let state = &mut self.display;
-                    match event {
-                        Event::WindowEvent { event, .. } => match event {
-                            WindowEvent::Resized(logical_size) => {
-                                // let actual_size = logical_size;
-                                state.resize_event(
-                                    &mut ctx,
-                                    logical_size.width as f32,
-                                    logical_size.height as f32,
-                                );
-                            }
-                            WindowEvent::CloseRequested => {
-                                if !state.quit_event(&mut ctx) {
-                                    ggez::event::quit(&mut ctx);
-                                }
-                            }
-                            WindowEvent::Focused(gained) => {
-                                state.focus_event(&mut ctx, gained);
-                            }
-                            WindowEvent::ReceivedCharacter(ch) => {
-                                state.text_input_event(&mut ctx, ch);
-                            }
-                            WindowEvent::KeyboardInput {
-                                input:
-                                KeyboardInput {
-                                    state: ElementState::Pressed,
-                                    virtual_keycode: Some(keycode),
-                                    modifiers,
-                                    ..
-                                },
-                                ..
-                            } => {
-                                let repeat = keyboard::is_key_repeated(&mut ctx);
-                                state.key_down_event(&mut ctx, keycode, modifiers.into(), repeat);
-                            }
-                            WindowEvent::KeyboardInput {
-                                input:
-                                KeyboardInput {
-                                    state: ElementState::Released,
-                                    virtual_keycode: Some(keycode),
-                                    modifiers,
-                                    ..
-                                },
-                                ..
-                            } => {
-                                state.key_up_event(&mut ctx, keycode, modifiers.into());
-                            },
-
-                            _ => (),
-                        }
-                        _ => (),
-                    }}}
-                );
-
+                    ctx.process_event(&event);
+                    self.handle_event(&mut ctx, event);
+                }
+            );
 
             while ggez::timer::check_update_time(&mut ctx, 60) {
-                let op_code = self.read_opcode();
-                self.program_counter += 2;
-
-                let (c, x, y, d) = decompose_opcode(op_code);
-                let nnn = op_code & 0x0FFF;
-                let kk = (op_code & 0x00FF) as u8;
-
-                match (c, x, y, d) {
-                    (0x0, 0x0, 0x0, 0x0) => event::quit(&mut ctx),
-                    (0x0, 0x0, 0xE, 0x0) => self.clear_display(),
-                    (0x0, 0x0, 0xE, 0xE) => self.ret(),
-                    (0x1, _, _, _) => self.jump_to(nnn),
-                    (0x2, _, _, _) => self.call(nnn),
-                    (0x3, _, _, _) => self.skip_if_equal(x, kk),
-                    (0x4, _, _, _) => self.skip_if_different(x, kk),
-                    (0x5, _, _, 0x0) => self.skip_if_equal_registers(x, y),
-                    (0x6, _, _, _) => self.load_in_register(x, kk),
-                    (0x7, _, _, _) => self.add_constant(x, kk),
-                    (0x8, _, _, 0x0) => self.copy_second_to_first(x, y),
-                    (0x8, _, _, 0x1) => self.or(x, y),
-                    (0x8, _, _, 0x2) => self.and(x, y),
-                    (0x8, _, _, 0x3) => self.xor(x, y),
-                    (0x8, _, _, 0x4) => self.add_registers(x, y),
-                    (0x8, _, _, 0x5) => self.sub_registers(x, y),
-                    (0x8, _, _, 0x6) => self.shift_right(x),
-                    (0x8, _, _, 0x7) => self.sub_registers_swapped(x, y),
-                    (0x8, _, _, 0xE) => self.shift_left(x),
-                    (0x9, _, _, 0x0) => self.skip_if_different_registers(x, y),
-                    (0xA, _, _, _) => self.set_pointer_register(nnn),
-                    (0xB, _, _, _) => self.offset_jump_to(nnn),
-                    (0xC, _, _, _) => self.random_and_constant_in(x, kk),
-                    (0xD, _, _, _) => self.draw_at(x, y, d),
-                    (0xF, _, 0x1, 0xE) => self.add_to_pointer_register(x),
-                    (0xF, _, 0x2, 0x9) => self.point_to_font_char(x),
-                    (0xF, _, 0x3, 0x3) => self.store_as_bcd(x),
-                    (0xF, _, 0x5, 0x5) => self.store_registers_up_to(x),
-                    (0xF, _, 0x6, 0x5) => self.load_registers_up_to(x),
-
-                    _ => todo!("opcode {:04x}", op_code),
-                }
+                self.emulate_cycle(&mut ctx)
             }
 
-            let state = &mut self.display;
-            state.draw(&mut ctx).unwrap();
+            self.display.draw(&mut ctx).unwrap();
+        }
+    }
+
+    fn emulate_cycle(&mut self, mut ctx: &mut Context) {
+        let op_code = self.read_opcode();
+        self.program_counter += 2;
+
+        let (c, x, y, d) = decompose_opcode(op_code);
+        let nnn = op_code & 0x0FFF;
+        let kk = (op_code & 0x00FF) as u8;
+
+        match (c, x, y, d) {
+            (0x0, 0x0, 0x0, 0x0) => event::quit(&mut ctx),
+            (0x0, 0x0, 0xE, 0x0) => self.clear_display(),
+            (0x0, 0x0, 0xE, 0xE) => self.ret(),
+            (0x1, _, _, _) => self.jump_to(nnn),
+            (0x2, _, _, _) => self.call(nnn),
+            (0x3, _, _, _) => self.skip_if_equal(x, kk),
+            (0x4, _, _, _) => self.skip_if_different(x, kk),
+            (0x5, _, _, 0x0) => self.skip_if_equal_registers(x, y),
+            (0x6, _, _, _) => self.load_in_register(x, kk),
+            (0x7, _, _, _) => self.add_constant(x, kk),
+            (0x8, _, _, 0x0) => self.copy_second_to_first(x, y),
+            (0x8, _, _, 0x1) => self.or(x, y),
+            (0x8, _, _, 0x2) => self.and(x, y),
+            (0x8, _, _, 0x3) => self.xor(x, y),
+            (0x8, _, _, 0x4) => self.add_registers(x, y),
+            (0x8, _, _, 0x5) => self.sub_registers(x, y),
+            (0x8, _, _, 0x6) => self.shift_right(x),
+            (0x8, _, _, 0x7) => self.sub_registers_swapped(x, y),
+            (0x8, _, _, 0xE) => self.shift_left(x),
+            (0x9, _, _, 0x0) => self.skip_if_different_registers(x, y),
+            (0xA, _, _, _) => self.set_pointer_register(nnn),
+            (0xB, _, _, _) => self.offset_jump_to(nnn),
+            (0xC, _, _, _) => self.random_and_constant_in(x, kk),
+            (0xD, _, _, _) => self.draw_at(x, y, d),
+            (0xF, _, 0x1, 0xE) => self.add_to_pointer_register(x),
+            (0xF, _, 0x2, 0x9) => self.point_to_font_char(x),
+            (0xF, _, 0x3, 0x3) => self.store_as_bcd(x),
+            (0xF, _, 0x5, 0x5) => self.store_registers_up_to(x),
+            (0xF, _, 0x6, 0x5) => self.load_registers_up_to(x),
+
+            _ => todo!("opcode {:04x}", op_code),
+        }
+    }
+
+    fn handle_event(&mut self, mut ctx: &mut Context, event: Event) {
+        let state = &mut self.display;
+        match event {
+            Event::WindowEvent { event, .. } => match event {
+                WindowEvent::Resized(logical_size) => {
+                    // let actual_size = logical_size;
+                    state.resize_event(
+                        &mut ctx,
+                        logical_size.width as f32,
+                        logical_size.height as f32,
+                    );
+                }
+                WindowEvent::CloseRequested => {
+                    if !state.quit_event(&mut ctx) {
+                        ggez::event::quit(&mut ctx);
+                    }
+                }
+                WindowEvent::Focused(gained) => {
+                    state.focus_event(&mut ctx, gained);
+                }
+                WindowEvent::ReceivedCharacter(ch) => {
+                    state.text_input_event(&mut ctx, ch);
+                }
+                WindowEvent::KeyboardInput {
+                    input:
+                    KeyboardInput {
+                        state: ElementState::Pressed,
+                        virtual_keycode: Some(keycode),
+                        modifiers,
+                        ..
+                    },
+                    ..
+                } => {
+                    let repeat = keyboard::is_key_repeated(&mut ctx);
+                    state.key_down_event(&mut ctx, keycode, modifiers.into(), repeat);
+                }
+                WindowEvent::KeyboardInput {
+                    input:
+                    KeyboardInput {
+                        state: ElementState::Released,
+                        virtual_keycode: Some(keycode),
+                        modifiers,
+                        ..
+                    },
+                    ..
+                } => {
+                    state.key_up_event(&mut ctx, keycode, modifiers.into());
+                }
+
+                _ => (),
+            }
+            _ => (),
         }
     }
 
@@ -316,13 +324,13 @@ impl CPU {
         }
     }
 
-    fn skip_if_equal_registers(&mut self, first_index: u8, second_index: u8){
+    fn skip_if_equal_registers(&mut self, first_index: u8, second_index: u8) {
         if self.registers[first_index as usize] == self.registers[second_index as usize] {
             self.program_counter += 2;
         }
     }
 
-    fn skip_if_different_registers(&mut self, first_index: u8, second_index: u8){
+    fn skip_if_different_registers(&mut self, first_index: u8, second_index: u8) {
         if self.registers[first_index as usize] != self.registers[second_index as usize] {
             self.program_counter += 2;
         }
@@ -382,7 +390,7 @@ impl CPU {
     }
 
     fn random_and_constant_in(&mut self, register_index: u8, constant: u8) {
-        let random_num : u8 = rand::thread_rng().gen();
+        let random_num: u8 = rand::thread_rng().gen();
         self.registers[register_index as usize] = random_num.bitand(constant);
     }
 
@@ -406,7 +414,7 @@ impl CPU {
         self.registers[0..=index].copy_from_slice(&self.memory[start_address..=end_address]);
     }
 
-    fn add_to_pointer_register(&mut self, register_index: u8){
+    fn add_to_pointer_register(&mut self, register_index: u8) {
         self.pointer_register += self.registers[register_index as usize] as u16;
     }
 
@@ -415,12 +423,12 @@ impl CPU {
         let value = self.registers[register_index as usize];
         //  Note that u8 can't represent four-digit numbers, so there is no
         //  need to compute: value % 1000
-        self.memory[i+0] = value / 100u8;
-        self.memory[i+1] = (value % 100u8) / 10u8;
-        self.memory[i+2] = value % 10u8;
+        self.memory[i + 0] = value / 100u8;
+        self.memory[i + 1] = (value % 100u8) / 10u8;
+        self.memory[i + 2] = value % 10u8;
     }
 
-    fn point_to_font_char(&mut self, register_index: u8){
+    fn point_to_font_char(&mut self, register_index: u8) {
         let char = self.registers[register_index as usize];
         if char.div(16u8) > 0 {    //  if it is a number between 0 and 15
             panic!("Unrepresentable character!");
@@ -428,19 +436,19 @@ impl CPU {
         self.pointer_register = 2 + 5 * char as u16;
     }
 
-    fn draw_at(&mut self, first_index: u8, second_index: u8, byte_number: u8){
+    fn draw_at(&mut self, first_index: u8, second_index: u8, byte_number: u8) {
         let x_coord = self.registers[first_index as usize].rem(64u8);
         let y_coord = self.registers[second_index as usize].rem(32u8);
         self.registers[0xF] = 0;
         let ptr_register = self.pointer_register as usize;
-        let sprite = &self.memory[ptr_register..ptr_register+(byte_number as usize)];
+        let sprite = &self.memory[ptr_register..ptr_register + (byte_number as usize)];
 
-        'rows: for i in 0..byte_number{
+        'rows: for i in 0..byte_number {
             if y_coord + i > 32 {
                 break 'rows;
             }
             let byte = sprite[i as usize];
-            'cols: for j in 0..8{
+            'cols: for j in 0..8 {
                 if x_coord + j > 64 {
                     break 'cols;
                 }
