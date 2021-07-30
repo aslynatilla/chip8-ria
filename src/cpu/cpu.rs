@@ -154,6 +154,7 @@ impl CPU {
 
     fn emulate_cycle(&mut self, mut ctx: &mut Context) {
         let op_code = self.read_opcode();
+        let pc = self.program_counter;
         self.program_counter += 2;
 
         let (c, x, y, d) = decompose_opcode(op_code);
