@@ -129,8 +129,10 @@ impl CPU {
                 }
             );
 
-            while !self.waiting_for_input && ggez::timer::check_update_time(&mut ctx, 60) {
-                self.emulate_cycle(&mut ctx)
+            while ggez::timer::check_update_time(&mut ctx, 60) {
+                if !self.waiting_for_input {
+                    self.emulate_cycle(&mut ctx)
+                }
             }
 
             self.display.draw(&mut ctx).unwrap();
@@ -262,7 +264,6 @@ impl CPU {
     }
 
     fn add_constant(&mut self, x: u8, kk: u8) {
-        // self.registers[x as usize] += kk;
         self.registers[x as usize] = self.registers[x as usize].wrapping_add(kk);
     }
 
