@@ -1,20 +1,27 @@
 #[cfg(test)]
 use crate::cpu::cpu::CPU;
 
-//  Temporarily commented since they won't work with the new changes to constructors
-// #[test]
-// fn rust_in_action_last_example() {
-//     let mut init_registers: [u8; 16] = [0; 16];
-//     init_registers[0..2].copy_from_slice(&[5, 10]);
-//
-//     let mut init_memory = [0u8; 0x1000];
-//     init_memory[0x00..0x06].copy_from_slice(&[0x21, 0x00, 0x21, 0x00, 0x00, 0x00]);
-//     init_memory[0x100..0x106].copy_from_slice(&[0x80, 0x14, 0x80, 0x14, 0x00, 0xEE]);
-//
-//     let mut cpu = CPU::new(init_registers, init_memory);
-//     cpu.run();
-//     assert_eq!(cpu.peek_register(0), 45);
-// }
+#[test]
+fn rust_in_action_last_example() {
+    let mut init_registers: [u8; 16] = [0; 16];
+    init_registers[0..2].copy_from_slice(&[5, 10]);
+
+    let mut init_memory = [0u8; 0x106];
+    init_memory[0x00..0x06].copy_from_slice(&[
+        0x23, 0x00,                                 //  Call routine at memory address 0x300
+        0x23, 0x00,                                 //  Note that 0x300 = 0x200 + 0x100
+        0x00, 0x00]);                               //  Terminate
+    init_memory[0x100..0x106].copy_from_slice(&[
+        0x80, 0x14,                                 //  Add R1 to R0, twice, and return
+        0x80, 0x14,
+        0x00, 0xEE
+    ]);
+
+    let mut cpu = CPU::new(init_registers, init_memory.to_vec());
+    cpu.run();
+    assert_eq!(cpu.peek_register(0), 45);
+}
+
 //
 // #[test]
 // #[should_panic(expected = "Stack overflow")]
