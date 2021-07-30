@@ -21,6 +21,7 @@ pub struct CPU {
     waiting_for_input: bool,
     input_register_index: Option<usize>,
     keycode_map: [KeyCode; 16],
+    delay_timer: u8,
 }
 
 #[derive(Clone)]
@@ -36,22 +37,20 @@ impl EventHandler for VirtualDisplay<bool> {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
-        if self.dirty_bit {
-            let image_bytes = self.data.iter()
-                .map(|bit| match bit {
-                    true => vec![255u8, 255u8, 255u8, 255u8],
-                    false => vec![0u8, 0u8, 0u8, 255u8]
-                })
-                .flatten()
-                .collect::<Vec<u8>>();
+        let image_bytes = self.data.iter()
+            .map(|bit| match bit {
+                true => vec![255u8, 255u8, 255u8, 255u8],
+                false => vec![0u8, 0u8, 0u8, 255u8]
+            })
+            .flatten()
+            .collect::<Vec<u8>>();
 
-            let mut image =
-                ggez::graphics::Image::from_rgba8(ctx, 64, 32, &image_bytes)?;
-            let draw_params = DrawParam::default().scale([10.0, 10.0]);
-            image.set_filter(FilterMode::Nearest);
-            ggez::graphics::draw(ctx, &image, draw_params)?;
-            self.dirty_bit = false;
-        }
+        let mut image =
+            ggez::graphics::Image::from_rgba8(ctx, 64, 32, &image_bytes)?;
+        let draw_params = DrawParam::default().scale([10.0, 10.0]);
+        image.set_filter(FilterMode::Nearest);
+        ggez::graphics::draw(ctx, &image, draw_params)?;
+        self.dirty_bit = false;
         graphics::present(ctx)?;
         Ok(())
     }
@@ -99,6 +98,7 @@ impl CPU {
                 KeyCode::A, KeyCode::S, KeyCode::D,
                 KeyCode::Z, KeyCode::C, KeyCode::Key4,
                 KeyCode::R, KeyCode::F, KeyCode::V],
+            delay_timer: 0,
         }
     }
 
@@ -128,14 +128,20 @@ impl CPU {
                     self.handle_event(&mut ctx, event);
                 }
             );
-
+            
             while ggez::timer::check_update_time(&mut ctx, 60) {
                 if !self.waiting_for_input {
                     self.emulate_cycle(&mut ctx)
                 }
             }
 
-            self.display.draw(&mut ctx).unwrap();
+            if self.delay_timer > 0 {
+                self.delay_timer -= 1;
+            }
+
+            if self.display.dirty_bit {
+                self.display.draw(&mut ctx).unwrap();
+            }
         }
     }
 
@@ -154,7 +160,6 @@ impl CPU {
 
     fn emulate_cycle(&mut self, mut ctx: &mut Context) {
         let op_code = self.read_opcode();
-        let pc = self.program_counter;
         self.program_counter += 2;
 
         let (c, x, y, d) = decompose_opcode(op_code);
@@ -186,7 +191,9 @@ impl CPU {
             (0xB, _, _, _) => self.offset_jump_to(nnn),
             (0xC, _, _, _) => self.random_and_constant_in(x, kk),
             (0xD, _, _, _) => self.draw_at(x, y, d),
+            (0xF, _, 0x0, 0x7) => self.store_delay_timer_in(x),
             (0xF, _, 0x0, 0xA) => self.wait_and_store_key_in(x),
+            (0xF, _, 0x1, 0x5) => self.load_delay_timer_from(x),
             (0xF, _, 0x1, 0xE) => self.add_to_pointer_register(x),
             (0xF, _, 0x2, 0x9) => self.point_to_font_char(x),
             (0xF, _, 0x3, 0x3) => self.store_as_bcd(x),
@@ -481,6 +488,14 @@ impl CPU {
     fn wait_and_store_key_in(&mut self, register_index: u8) {
         self.waiting_for_input = true;
         self.input_register_index = Some(register_index as usize);
+    }
+
+    fn load_delay_timer_from(&mut self, register_index: u8) {
+        self.delay_timer = self.registers[register_index as usize];
+    }
+
+    fn store_delay_timer_in(&mut self, register_index: u8) {
+        self.registers[register_index as usize] = self.delay_timer;
     }
 }
 
