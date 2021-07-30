@@ -7,7 +7,7 @@ use ggez::graphics::{Color, DrawParam, FilterMode};
 use ggez::event::winit_event::{Event, WindowEvent, KeyboardInput, ElementState};
 use ggez::input::keyboard;
 use ggez::conf::WindowSetup;
-use ggez::event::EventsLoop;
+use ggez::event::{EventsLoop, KeyCode};
 
 pub struct CPU {
     registers: [u8; 16],
@@ -18,6 +18,9 @@ pub struct CPU {
     pointer_register: u16,
 
     display: VirtualDisplay<bool>,
+    waiting_for_input: bool,
+    input_register_index: Option<usize>,
+    keycode_map: [KeyCode; 16],
 }
 
 #[derive(Clone)]
@@ -88,6 +91,14 @@ impl CPU {
                 data: [false; 2048],
                 dirty_bit: false,
             },
+            waiting_for_input: false,
+            input_register_index: None,
+            keycode_map: [KeyCode::X,
+                KeyCode::Key1, KeyCode::Key2, KeyCode::Key3,
+                KeyCode::Q, KeyCode::W, KeyCode::E,
+                KeyCode::A, KeyCode::S, KeyCode::D,
+                KeyCode::Z, KeyCode::C, KeyCode::Key4,
+                KeyCode::R, KeyCode::F, KeyCode::V],
         }
     }
 
@@ -119,7 +130,9 @@ impl CPU {
             );
 
             while ggez::timer::check_update_time(&mut ctx, 60) {
-                self.emulate_cycle(&mut ctx)
+                if !self.waiting_for_input {
+                    self.emulate_cycle(&mut ctx)
+                }
             }
 
             self.display.draw(&mut ctx).unwrap();
@@ -141,6 +154,7 @@ impl CPU {
 
     fn emulate_cycle(&mut self, mut ctx: &mut Context) {
         let op_code = self.read_opcode();
+        let pc = self.program_counter;
         self.program_counter += 2;
 
         let (c, x, y, d) = decompose_opcode(op_code);
@@ -172,6 +186,7 @@ impl CPU {
             (0xB, _, _, _) => self.offset_jump_to(nnn),
             (0xC, _, _, _) => self.random_and_constant_in(x, kk),
             (0xD, _, _, _) => self.draw_at(x, y, d),
+            (0xF, _, 0x0, 0xA) => self.wait_and_store_key_in(x),
             (0xF, _, 0x1, 0xE) => self.add_to_pointer_register(x),
             (0xF, _, 0x2, 0x9) => self.point_to_font_char(x),
             (0xF, _, 0x3, 0x3) => self.store_as_bcd(x),
@@ -186,49 +201,37 @@ impl CPU {
         let state = &mut self.display;
         match event {
             Event::WindowEvent { event, .. } => match event {
-                WindowEvent::Resized(logical_size) => {
-                    // let actual_size = logical_size;
-                    state.resize_event(
-                        &mut ctx,
-                        logical_size.width as f32,
-                        logical_size.height as f32,
-                    );
-                }
                 WindowEvent::CloseRequested => {
                     if !state.quit_event(&mut ctx) {
                         ggez::event::quit(&mut ctx);
                     }
                 }
-                WindowEvent::Focused(gained) => {
-                    state.focus_event(&mut ctx, gained);
-                }
-                WindowEvent::ReceivedCharacter(ch) => {
-                    state.text_input_event(&mut ctx, ch);
-                }
+
                 WindowEvent::KeyboardInput {
                     input:
                     KeyboardInput {
                         state: ElementState::Pressed,
-                        virtual_keycode: Some(keycode),
+                        virtual_keycode: Some(current_keycode),
                         modifiers,
                         ..
                     },
                     ..
                 } => {
                     let repeat = keyboard::is_key_repeated(&mut ctx);
-                    state.key_down_event(&mut ctx, keycode, modifiers.into(), repeat);
-                }
-                WindowEvent::KeyboardInput {
-                    input:
-                    KeyboardInput {
-                        state: ElementState::Released,
-                        virtual_keycode: Some(keycode),
-                        modifiers,
-                        ..
-                    },
-                    ..
-                } => {
-                    state.key_up_event(&mut ctx, keycode, modifiers.into());
+                    state.key_down_event(&mut ctx, current_keycode, modifiers.into(), repeat);
+
+                    if self.waiting_for_input {
+                        match self.keycode_map.iter().enumerate().find(|&(_, &map_keycode)| {
+                            map_keycode == current_keycode
+                        }) {
+                            None => (),
+                            Some((value, _)) => {
+                                self.registers[self.input_register_index.unwrap()] = value as u8;
+                                self.waiting_for_input = false;
+                                self.input_register_index = None;
+                            }
+                        };
+                    }
                 }
 
                 _ => (),
@@ -262,7 +265,7 @@ impl CPU {
     }
 
     fn add_constant(&mut self, x: u8, kk: u8) {
-        self.registers[x as usize] += kk;
+        self.registers[x as usize] = self.registers[x as usize].wrapping_add(kk);
     }
 
     fn call(&mut self, fn_address: u16) {
@@ -473,6 +476,11 @@ impl CPU {
 
     fn clear_display(&mut self) {
         self.display.data = [false; 2048];
+    }
+
+    fn wait_and_store_key_in(&mut self, register_index: u8) {
+        self.waiting_for_input = true;
+        self.input_register_index = Some(register_index as usize);
     }
 }
 
